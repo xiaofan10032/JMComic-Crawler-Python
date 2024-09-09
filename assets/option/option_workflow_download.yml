@@ -4,6 +4,7 @@ dir_rule:
   rule: Bd_Aauthor_Atitle_Pindex
 
 client:
+  impl: api # 使用api可免登录下载本子
   domain:
     html: [ jmcomic1.me, jmcomic.me ]
 
@@ -17,7 +18,7 @@ plugins:
 
     - plugin: client_proxy # 提高移动端的请求效率的插件
       kwargs:
-        proxy_client_key: cl_proxy_future
+        proxy_client_key: photo_concurrent_fetcher_proxy
         whitelist: [ api, ]
 
     - plugin: login # 登录插件

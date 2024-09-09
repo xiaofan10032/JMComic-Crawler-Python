@@ -22,8 +22,8 @@ class Test_Client(JmTestConfigurable):
             for aid, ainfo in page[0:1:1]:
                 print(aid, ainfo)
 
-        for aid, atitle, tag_list in page.iter_id_title_tag():
-            print(aid, atitle, tag_list)
+        for aid, atitle, tags in page.iter_id_title_tag():
+            print(aid, atitle, tags)
 
         aid = '438516'
         page = self.client.search_site(aid)
@@ -38,30 +38,11 @@ class Test_Client(JmTestConfigurable):
         self.client.download_by_image_detail(image, self.option.decide_image_filepath(image))
 
     def test_album_missing(self):
-        class A(BaseException):
-            pass
-
-        JmModuleConfig.CLASS_EXCEPTION = A
         self.assertRaises(
-            A,
+            MissingAlbumPhotoException,
             self.client.get_album_detail,
             '0'
         )
-
-    def test_raise_exception(self):
-
-        class B(BaseException):
-            pass
-
-        def raises(old, _msg, _extra):
-            self.assertEqual(old, default_raise_exception_executor)
-            raise B()
-
-        JmModuleConfig.raise_exception_executor = default_raise_exception_executor
-        ExceptionTool.replace_old_exception_executor(raises)
-        self.assertRaises(B, JmcomicText.parse_to_jm_id, 'asdhasjhkd')
-        # 还原
-        JmModuleConfig.raise_exception_executor = default_raise_exception_executor
 
     def test_detail_property_list(self):
         album = self.client.get_album_detail(410090)
@@ -174,14 +155,14 @@ class Test_Client(JmTestConfigurable):
                     list2=ans,
                 )
 
-    def test_search_advanced(self):
+    def test_search_params(self):
         elist = []
 
         def search_and_test(expected_result, params):
             try:
                 page = self.client.search_site(**params)
                 print(page)
-                assert int(page[0][0]) == expected_result
+                self.assertEqual(int(page[0][0]), expected_result)
             except Exception as e:
                 elist.append(e)
 
@@ -189,13 +170,13 @@ class Test_Client(JmTestConfigurable):
         cases = {
             152637: {
                 'search_query': '无修正',
-                'order_by': JmSearchAlbumClient.ORDER_BY_LIKE,
-                'time': JmSearchAlbumClient.TIME_ALL,
+                'order_by': JmMagicConstants.ORDER_BY_LIKE,
+                'time': JmMagicConstants.TIME_ALL,
             },
             147643: {
                 'search_query': '无修正',
-                'order_by': JmSearchAlbumClient.ORDER_BY_PICTURE,
-                'time': JmSearchAlbumClient.TIME_ALL,
+                'order_by': JmMagicConstants.ORDER_BY_PICTURE,
+                'time': JmMagicConstants.TIME_ALL,
             },
         }
 
@@ -253,16 +234,16 @@ class Test_Client(JmTestConfigurable):
                 self.assertEqual(ans, id(photo))
 
     def test_search_generator(self):
-        JmModuleConfig.decode_url_when_debug = False
+        JmModuleConfig.FLAG_DECODE_URL_WHEN_LOGGING = False
 
         gen = self.client.search_gen('MANA')
         for i, page in enumerate(gen):
-            print(page.page_count)
+            print(page.total)
             page = gen.send({
                 'search_query': 'MANA +无修正',
                 'page': 1
             })
-            print(page.page_count)
+            print(page.total)
             break
 
     def test_cache_level(self):
@@ -270,7 +251,7 @@ class Test_Client(JmTestConfigurable):
             return cl.get_album_detail('123')
 
         def assertEqual(first_cl, second_cl, msg):
-            return self.assertEqual(
+            self.assertEqual(
                 get(first_cl),
                 get(second_cl),
                 msg,
@@ -284,12 +265,6 @@ class Test_Client(JmTestConfigurable):
             )
 
         cases = [
-            (
-                CacheRegistry.level_option,
-                CacheRegistry.level_option,
-                CacheRegistry.level_client,
-                CacheRegistry.level_client,
-            ),
             (
                 True,
                 'level_option',
@@ -310,22 +285,46 @@ class Test_Client(JmTestConfigurable):
             # c1 == c2
             # c3 == c4
             # c1 != c3
+            assertEqual(c1, c2, 'equals in same option level')
+            assertNotEqual(c3, c4, 'not equals in client level')
+            assertNotEqual(c1, c3, 'not equals in different level')
+
             # c5 != c1, c2, c3, c4
-            invoke_all(
-                args_func_list=[
-                    (None, func) for func in [
-                        lambda: assertEqual(c1, c2, 'equals in same option level'),
-                        lambda: assertNotEqual(c3, c4, 'not equals in client level'),
-                        lambda: assertNotEqual(c1, c3, 'not equals in different level'),
-                        lambda: assertNotEqual(c1, c5, 'not equals for None level'),
-                        lambda: assertNotEqual(c3, c5, 'not equals for None level'),
-                    ]
-                ]
-            )
+            obj = get(c5)
+            self.assertNotEqual(obj, get(c1))
+            self.assertNotEqual(obj, get(c3))
 
-        future_ls = thread_pool_executor(
-            iter_objs=cases,
-            apply_each_obj_func=run,
-        )
+        for case in cases:
+            run(*case)
 
-        return [f.result() for f in future_ls]  # 等待执行完毕
+    def test_search_advanced(self):
+        if not self.client.is_given_type(JmHtmlClient):
+            return
+
+        # noinspection PyTypeChecker
+        html_cl: JmHtmlClient = self.client
+        # 循环获取分页
+        for page in html_cl.search_gen(
+                search_query='mana',
+                page=1,  # 起始页码
+                category=JmMagicConstants.CATEGORY_DOUJIN,
+                sub_category=JmMagicConstants.SUB_DOUJIN_CG,
+                time=JmMagicConstants.TIME_ALL,
+        ):
+            self.print_page(page)
+
+        print_sep()
+        for page in html_cl.categories_filter_gen(
+                page=1,  # 起始页码
+                category=JmMagicConstants.CATEGORY_DOUJIN,
+                sub_category=JmMagicConstants.SUB_DOUJIN_CG,
+                time=JmMagicConstants.TIME_ALL,
+        ):
+            self.print_page(page)
+            break
+
+    @staticmethod
+    def print_page(page):
+        # 打印page内容
+        for aid, atitle in page:
+            print(aid, atitle)

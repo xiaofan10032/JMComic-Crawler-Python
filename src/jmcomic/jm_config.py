@@ -1,45 +1,90 @@
-def field_cache(*args, **kwargs):
-    from common import field_cache
-    return field_cache(*args, **kwargs)
+from common import time_stamp, field_cache, ProxyBuilder
 
 
-def default_jm_debug_logging(topic: str, msg: str):
-    from common import format_ts
-    print(f'{format_ts()}:【{topic}】{msg}')
-
-
-def default_postman_constructor(session, **kwargs):
-    from common import Postmans
-
-    if session is True:
-        return Postmans.new_session(**kwargs)
-
-    return Postmans.new_postman(**kwargs)
-
-
-def default_raise_exception_executor(msg, _extra):
-    raise JmModuleConfig.CLASS_EXCEPTION(msg)
-
-
-def system_proxy():
-    from common import ProxyBuilder
-    return ProxyBuilder.system_proxy()
-
-
-def str_to_list(text):
+def shuffled(lines):
+    from random import shuffle
     from common import str_to_list
-    return str_to_list(text)
+    ls = str_to_list(lines)
+    shuffle(ls)
+    return ls
 
 
-class JmcomicException(Exception):
-    pass
+def default_jm_logging(topic: str, msg: str):
+    from common import format_ts, current_thread
+    print('[{}] [{}]:【{}】{}'.format(format_ts(), current_thread().name, topic, msg))
 
 
+# 禁漫常量
+class JmMagicConstants:
+    # 搜索参数-排序
+    ORDER_BY_LATEST = 'mr'
+    ORDER_BY_VIEW = 'mv'
+    ORDER_BY_PICTURE = 'mp'
+    ORDER_BY_LIKE = 'tf'
+
+    ORDER_MONTH_RANKING = 'mv_m'
+    ORDER_WEEK_RANKING = 'mv_w'
+    ORDER_DAY_RANKING = 'mv_t'
+
+    # 搜索参数-时间段
+    TIME_TODAY = 't'
+    TIME_WEEK = 'w'
+    TIME_MONTH = 'm'
+    TIME_ALL = 'a'
+
+    # 分类参数API接口的category
+    CATEGORY_ALL = '0'  # 全部
+    CATEGORY_DOUJIN = 'doujin'  # 同人
+    CATEGORY_SINGLE = 'single'  # 单本
+    CATEGORY_SHORT = 'short'  # 短篇
+    CATEGORY_ANOTHER = 'another'  # 其他
+    CATEGORY_HANMAN = 'hanman'  # 韩漫
+    CATEGORY_MEIMAN = 'meiman'  # 美漫
+    CATEGORY_DOUJIN_COSPLAY = 'doujin_cosplay'  # cosplay
+    CATEGORY_3D = '3D'  # 3D
+    CATEGORY_ENGLISH_SITE = 'english_site'  # 英文站
+
+    # 副分类
+    SUB_CHINESE = 'chinese'  # 汉化，通用副分类
+    SUB_JAPANESE = 'japanese'  # 日语，通用副分类
+
+    # 其他类（CATEGORY_ANOTHER）的副分类
+    SUB_ANOTHER_OTHER = 'other'  # 其他漫画
+    SUB_ANOTHER_3D = '3d'  # 3D
+    SUB_ANOTHER_COSPLAY = 'cosplay'  # cosplay
+
+    # 同人（SUB_CHINESE）的副分类
+    SUB_DOUJIN_CG = 'CG'  # CG
+    SUB_DOUJIN_CHINESE = SUB_CHINESE
+    SUB_DOUJIN_JAPANESE = SUB_JAPANESE
+
+    # 短篇（CATEGORY_SHORT）的副分类
+    SUB_SHORT_CHINESE = SUB_CHINESE
+    SUB_SHORT_JAPANESE = SUB_JAPANESE
+
+    # 单本（CATEGORY_SINGLE）的副分类
+    SUB_SINGLE_CHINESE = SUB_CHINESE
+    SUB_SINGLE_JAPANESE = SUB_JAPANESE
+    SUB_SINGLE_YOUTH = 'youth'
+
+    # 图片分割参数
+    SCRAMBLE_220980 = 220980
+    SCRAMBLE_268850 = 268850
+    SCRAMBLE_421926 = 421926  # 2023-02-08后改了图片切割算法
+
+    # 移动端API密钥
+    APP_TOKEN_SECRET = '18comicAPP'
+    APP_TOKEN_SECRET_2 = '18comicAPPContent'
+    APP_DATA_SECRET = '185Hcomic3PAPP7R'
+    APP_VERSION = '1.7.2'
+
+
+# 模块级别共用配置
 class JmModuleConfig:
     # 网站相关
     PROT = "https://"
     JM_REDIRECT_URL = f'{PROT}jm365.work/3YeBdF'  # 永久網域，怕走失的小伙伴收藏起来
-    JM_PUB_URL = f'{PROT}jmcomic.ltd'
+    JM_PUB_URL = f'{PROT}jmcomic-fb.vip'
     JM_CDN_IMAGE_URL_TEMPLATE = PROT + 'cdn-msp.{domain}/media/photos/{photo_id}/{index:05}{suffix}'  # index 从1开始
     JM_IMAGE_SUFFIX = ['.jpg', '.webp', '.png', '.gif']
 
@@ -52,40 +97,73 @@ class JmModuleConfig:
     # JM的异常网页code
     JM_ERROR_STATUS_CODE = {
         403: 'ip地区禁止访问/爬虫被识别',
+        500: '500: 禁漫服务器内部异常（可能是服务器过载，可以切换ip或稍后重试）',
         520: '520: Web server is returning an unknown error (禁漫服务器内部报错)',
         524: '524: The origin web server timed out responding to this request. (禁漫服务器处理超时)',
     }
 
+    # 分页大小
+    PAGE_SIZE_SEARCH = 80
+    PAGE_SIZE_FAVORITE = 20
+
     # 图片分隔相关
-    SCRAMBLE_220980 = 220980
-    SCRAMBLE_268850 = 268850
-    SCRAMBLE_421926 = 421926  # 2023-02-08后改了图片切割算法
     SCRAMBLE_CACHE = {}
 
-    # 移动端API密钥
-    APP_SECRET = '18comicAPPContent'
+    # 当本子没有作者名字时，顶替作者名字
+    DEFAULT_AUTHOR = 'default_author'
 
+    APP_HEADERS_TEMPLATE = {
+        'Accept-Encoding': 'gzip, deflate',
+        'user-agent': 'Mozilla/5.0 (Linux; Android 9; V1938CT Build/PQ3A.190705.11211812; wv) AppleWebKit/537.36 (KHTML, '
+                      'like Gecko) Version/4.0 Chrome/91.0.4472.114 Safari/537.36',
+    }
+
+    APP_HEADERS_IMAGE = {
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        'X-Requested-With': 'com.jiaohua_browser',
+        'Referer': 'https://www.jmfreedomproxy.xyz/',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+    }
+
+    # 网页端headers
+    HTML_HEADERS_TEMPLATE = {
+        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,'
+                  'application/signed-exchange;v=b3;q=0.7',
+        'accept-language': 'zh-CN,zh;q=0.9',
+        'cache-control': 'no-cache',
+        'dnt': '1',
+        'pragma': 'no-cache',
+        'priority': 'u=0, i',
+        'referer': 'https://18comic.vip/',
+        'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'document',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': 'none',
+        'sec-fetch-user': '?1',
+        'upgrade-insecure-requests': '1',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 '
+                      'Safari/537.36',
+    }
     # cookies，目前只在移动端使用，因为移动端请求接口须携带，但不会校验cookies的内容。
     APP_COOKIES = None
 
     # 移动端图片域名
-    DOMAIN_IMAGE_LIST = str_to_list('''
-    cdn-msp.jmapiproxy1.monster
-    cdn-msp2.jmapiproxy1.monster
+    DOMAIN_IMAGE_LIST = shuffled('''
     cdn-msp.jmapiproxy1.cc
     cdn-msp.jmapiproxy2.cc
-    cdn-msp.jmapiproxy3.cc
-    cdn-msp.jmapiproxy4.cc
-
+    cdn-msp2.jmapiproxy2.cc
+    cdn-msp3.jmapiproxy2.cc
+    cdn-msp.jmapinodeudzn.net
+    cdn-msp3.jmapinodeudzn.net
     ''')
 
     # 移动端API域名
-    DOMAIN_API_LIST = str_to_list('''
-    www.jmapinode1.top
-    www.jmapinode2.top
-    www.jmapinode3.top
-    www.jmapinode.biz
-    www.jmapinode.top
+    DOMAIN_API_LIST = shuffled('''
+    www.jmeadpoolcdn.one
+    www.jmapiproxyxxx.one
+    www.jmeadpoolcdn.life
     
     ''')
 
@@ -103,25 +181,40 @@ class JmModuleConfig:
     CLASS_ALBUM = None
     CLASS_PHOTO = None
     CLASS_IMAGE = None
-    CLASS_EXCEPTION = JmcomicException
+
     # 客户端注册表
     REGISTRY_CLIENT = {}
     # 插件注册表
     REGISTRY_PLUGIN = {}
+    # 异常监听器
+    # key: 异常类
+    # value: 函数，参数只有异常对象，无需返回值
+    # 这个异常类（或者这个异常的子类）的实例将要被raise前，你的listener方法会被调用
+    REGISTRY_EXCEPTION_LISTENER = {}
 
-    # 执行debug的函数
-    debug_executor = default_jm_debug_logging
-    # postman构造函数
-    postman_constructor = default_postman_constructor
-    # 网页正则表达式解析失败时，执行抛出异常的函数，可以替换掉用于debug
-    raise_exception_executor = default_raise_exception_executor
+    # 执行log的函数
+    EXECUTOR_LOG = default_jm_logging
 
-    # debug开关标记
-    enable_jm_debug = True
-    # debug时解码url
-    decode_url_when_debug = True
-    # 下载时的一些默认值配置
-    DEFAULT_AUTHOR = 'default-author'
+    # 使用固定时间戳
+    FLAG_USE_FIX_TIMESTAMP = True
+    # 移动端Client初始化cookies
+    FLAG_API_CLIENT_REQUIRE_COOKIES = True
+    # log开关标记
+    FLAG_ENABLE_JM_LOG = True
+    # log时解码url
+    FLAG_DECODE_URL_WHEN_LOGGING = True
+    # 当内置的版本号落后时，使用最新的禁漫app版本号
+    FLAG_USE_VERSION_NEWER_IF_BEHIND = True
+
+    # 关联dir_rule的自定义字段与对应的处理函数
+    # 例如:
+    # Amyname -> JmModuleConfig.AFIELD_ADVICE['myname'] = lambda album: "自定义名称"
+    AFIELD_ADVICE = dict()
+    PFIELD_ADVICE = dict()
+
+    # 当发生 oserror: [Errno 36] File name too long 时，
+    # 把文件名限制在指定个字符以内
+    VAR_FILE_NAME_LENGTH_LIMIT = 100
 
     @classmethod
     def downloader_class(cls):
@@ -194,7 +287,7 @@ class JmModuleConfig:
         postman = postman or cls.new_postman(session=True)
 
         url = postman.with_redirect_catching().get(cls.JM_REDIRECT_URL)
-        cls.jm_debug('module.html_url', f'获取禁漫网页URL: [{cls.JM_REDIRECT_URL}] → [{url}]')
+        cls.jm_log('module.html_url', f'获取禁漫网页URL: [{cls.JM_REDIRECT_URL}] → [{url}]')
         return url
 
     @classmethod
@@ -215,116 +308,98 @@ class JmModuleConfig:
         from .jm_toolkit import JmcomicText
         domain_list = JmcomicText.analyse_jm_pub_html(resp.text)
 
-        cls.jm_debug('module.html_domain_all', f'获取禁漫网页全部域名: [{resp.url}] → {domain_list}')
+        cls.jm_log('module.html_domain_all', f'获取禁漫网页全部域名: [{resp.url}] → {domain_list}')
         return domain_list
 
     @classmethod
-    @field_cache("APP_COOKIES")
-    def get_cookies(cls, postman=None):
-        from .jm_toolkit import JmcomicText
-        url = JmcomicText.format_url('/setting', cls.DOMAIN_API_LIST[0])
-        postman = postman or cls.new_postman()
+    def get_html_domain_all_via_github(cls,
+                                       postman=None,
+                                       template='https://jmcmomic.github.io/go/{}.html',
+                                       index_range=(300, 309)
+                                       ):
+        """
+        通过禁漫官方的github号的repo获取最新的禁漫域名
+        https://github.com/jmcmomic/jmcmomic.github.io
+        """
+        postman = postman or cls.new_postman(headers={
+            'authority': 'github.com',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 '
+                          'Safari/537.36'
+        })
+        domain_set = set()
 
-        resp = postman.get(url)
-        cookies = dict(resp.cookies)
+        def fetch_domain(url):
+            resp = postman.get(url, allow_redirects=False)
+            text = resp.text
+            from .jm_toolkit import JmcomicText
+            for domain in JmcomicText.analyse_jm_pub_html(text):
+                if domain.startswith('jm365'):
+                    continue
+                domain_set.add(domain)
 
-        cls.jm_debug('module.cookies', f'获取cookies: [{url}] → {cookies}')
-        return cookies
+        from common import multi_thread_launcher
+
+        multi_thread_launcher(
+            iter_objs=[template.format(i) for i in range(*index_range)],
+            apply_each_obj_func=fetch_domain,
+        )
+
+        return domain_set
 
     @classmethod
     def new_html_headers(cls, domain='18comic.vip'):
         """
         网页端的headers
         """
-        return {
+        headers = cls.HTML_HEADERS_TEMPLATE.copy()
+        headers.update({
             'authority': domain,
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,'
-                      'application/signed-exchange;v=b3;q=0.7',
-            'accept-language': 'zh-CN,zh;q=0.9',
+            'origin': f'https://{domain}',
             'referer': f'https://{domain}',
-            'sec-ch-ua': '"Not.A/Brand";v="8", "Chromium";v="114", "Google Chrome";v="114"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Windows"',
-            'sec-fetch-dest': 'document',
-            'sec-fetch-mode': 'navigate',
-            'sec-fetch-site': 'none',
-            'sec-fetch-user': '?1',
-            'upgrade-insecure-requests': '1',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 '
-                          'Safari/537.36',
-        }
+        })
+        return headers
 
     @classmethod
-    def new_api_headers(cls, key_ts):
-        """
-        根据key_ts生成移动端的headers
-        """
-        if key_ts is None:
-            from common import time_stamp
-            key_ts = time_stamp()
-
-        import hashlib
-        token = hashlib.md5(f"{key_ts}{cls.APP_SECRET}".encode("utf-8")).hexdigest()
-
-        return {
-            'token': token,
-            'tokenparam': f"{key_ts},1.6.0",
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 9; V1938CT Build/PQ3A.190705.09211555; wv) AppleWebKit/537.36 (KHTML, '
-                          'like Gecko) Version/4.0 Chrome/91.0.4472.114 Safari/537.36',
-            'X-Requested-With': 'com.jiaohua_browser',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,'
-                      'application/signed-exchange;v=b3;q=0.9',
-            'Sec-Fetch-Site': 'none',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-User': '?1',
-            'Sec-Fetch-Dest': 'document',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-        }
+    @field_cache()
+    def get_fix_ts_token_tokenparam(cls):
+        ts = time_stamp()
+        from .jm_toolkit import JmCryptoTool
+        token, tokenparam = JmCryptoTool.token_and_tokenparam(ts)
+        return ts, token, tokenparam
 
     # noinspection PyUnusedLocal
     @classmethod
-    def jm_debug(cls, topic: str, msg: str):
-        if cls.enable_jm_debug is True:
-            cls.debug_executor(topic, msg)
+    def jm_log(cls, topic: str, msg: str):
+        if cls.FLAG_ENABLE_JM_LOG is True:
+            cls.EXECUTOR_LOG(topic, msg)
 
     @classmethod
-    def disable_jm_debug(cls):
-        cls.enable_jm_debug = False
+    def disable_jm_log(cls):
+        cls.FLAG_ENABLE_JM_LOG = False
 
     @classmethod
     def new_postman(cls, session=False, **kwargs):
         kwargs.setdefault('impersonate', 'chrome110')
         kwargs.setdefault('headers', JmModuleConfig.new_html_headers())
         kwargs.setdefault('proxies', JmModuleConfig.DEFAULT_PROXIES)
-        return cls.postman_constructor(session, **kwargs)
 
-    album_comment_headers = {
-        'authority': '18comic.vip',
-        'accept': 'application/json, text/javascript, */*; q=0.01',
-        'accept-language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-        'cache-control': 'no-cache',
-        'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'origin': 'https://18comic.vip',
-        'pragma': 'no-cache',
-        'referer': 'https://18comic.vip/album/248965/',
-        'sec-ch-ua': '"Not.A/Brand";v="8", "Chromium";v="114", "Google Chrome";v="114"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-origin',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
-                      'Chrome/114.0.0.0 Safari/537.36',
-        'x-requested-with': 'XMLHttpRequest',
-    }
+        from common import Postmans
+
+        if session is True:
+            return Postmans.new_session(**kwargs)
+
+        return Postmans.new_postman(**kwargs)
 
     # option 相关的默认配置
+    # 一般情况下，建议使用option配置文件来定制配置
+    # 而如果只想修改几个简单常用的配置，也可以下方的DEFAULT_XXX属性
     JM_OPTION_VER = '2.1'
-    DEFAULT_CLIENT_IMPL = 'html'
-    DEFAULT_PROXIES = system_proxy()  # use system proxy by default
+    DEFAULT_CLIENT_IMPL = 'api'  # 默认Client实现类型为网页端
+    DEFAULT_CLIENT_CACHE = None  # 默认关闭Client缓存。缓存的配置详见 CacheRegistry
+    DEFAULT_PROXIES = ProxyBuilder.system_proxy()  # 默认使用系统代理
 
-    default_option_dict: dict = {
-        'debug': None,
+    DEFAULT_OPTION_DICT: dict = {
+        'log': None,
         'dir_rule': {'rule': 'Bd_Pname', 'base_dir': None},
         'download': {
             'cache': True,
@@ -346,12 +421,12 @@ class JmModuleConfig:
                 }
             },
             'impl': None,
-            'retry_times': 5
+            'retry_times': 5,
         },
         'plugins': {
-            # 如果插件抛出参数校验异常，只debug。（全局配置，可以被插件的局部配置覆盖）
-            # 可选值：ignore（忽略），debug（打印日志），raise（抛异常）。
-            'valid': 'debug',
+            # 如果插件抛出参数校验异常，只log。（全局配置，可以被插件的局部配置覆盖）
+            # 可选值：ignore（忽略），log（打印日志），raise（抛异常）。
+            'valid': 'log',
         },
     }
 
@@ -363,11 +438,11 @@ class JmModuleConfig:
         """
         from copy import deepcopy
 
-        option_dict = deepcopy(cls.default_option_dict)
+        option_dict = deepcopy(cls.DEFAULT_OPTION_DICT)
 
-        # debug
-        if option_dict['debug'] is None:
-            option_dict['debug'] = cls.enable_jm_debug
+        # log
+        if option_dict['log'] is None:
+            option_dict['log'] = cls.FLAG_ENABLE_JM_LOG
 
         # dir_rule.base_dir
         dir_rule = option_dict['dir_rule']
@@ -378,7 +453,7 @@ class JmModuleConfig:
         # client cache
         client = option_dict['client']
         if client['cache'] is None:
-            client['cache'] = True
+            client['cache'] = cls.DEFAULT_CLIENT_CACHE
 
         # client impl
         if client['impl'] is None:
@@ -412,6 +487,10 @@ class JmModuleConfig:
                                    f'未配置client_key, class: {client_class}')
         cls.REGISTRY_CLIENT[client_class.client_key] = client_class
 
+    @classmethod
+    def register_exception_listener(cls, etype, listener):
+        cls.REGISTRY_EXCEPTION_LISTENER[etype] = listener
 
-jm_debug = JmModuleConfig.jm_debug
-disable_jm_debug = JmModuleConfig.disable_jm_debug
+
+jm_log = JmModuleConfig.jm_log
+disable_jm_log = JmModuleConfig.disable_jm_log
