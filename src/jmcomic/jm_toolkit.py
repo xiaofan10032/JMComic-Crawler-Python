@@ -6,7 +6,7 @@ from .jm_exception import *
 class JmcomicText:
     pattern_jm_domain = compile(r'https://([\w.-]+)')
     pattern_jm_pa_id = [
-        (compile(r'(photos?|album)/(\d+)'), 2),
+        (compile(r'(photos?|albums?)/(\d+)'), 2),
         (compile(r'id=(\d+)'), 1),
     ]
     pattern_html_jm_pub_domain = compile(r'[\w-]+\.\w+/?\w+')
@@ -22,39 +22,40 @@ class JmcomicText:
     pattern_html_photo_sort = compile(r'var sort = (\d+);')
     pattern_html_photo_page_arr = compile(r'var page_arr = (.*?);')
 
+    pattern_html_b64_decode_content = compile(r'const html = base64DecodeUtf8\("(.*?)"\)')
     pattern_html_album_album_id = compile(r'<span class="number">.*?：JM(\d+)</span>')
     pattern_html_album_scramble_id = compile(r'var scramble_id = (\d+);')
-    pattern_html_album_name = compile(r'<h1 class="book-name" id="book-name">([\s\S]*?)</h1>')
-    pattern_html_album_episode_list = compile(r'data-album="(\d+)">\n *?<li.*?>\n *'
-                                              r'第(\d+)話\n([\s\S]*?)\n *'
-                                              r'<[\s\S]*?>(\d+-\d+-\d+).*?')
+    pattern_html_album_name = compile(r'id="book-name"[^>]*?>([\s\S]*?)<')
+    pattern_html_album_description = compile(r'叙述：([\s\S]*?)</h2>')
+    pattern_html_album_episode_list = compile(r'data-album="(\d+)"[^>]*>[\s\S]*?第(\d+)[话話]([\s\S]*?)<[\s\S]*?>')
     pattern_html_album_page_count = compile(r'<span class="pagecount">.*?:(\d+)</span>')
     pattern_html_album_pub_date = compile(r'>上架日期 : (.*?)</span>')
     pattern_html_album_update_date = compile(r'>更新日期 : (.*?)</span>')
+    pattern_html_tag_a = compile(r'<a[^>]*?>\s*(\S*)\s*</a>')
     # 作品
     pattern_html_album_works = [
         compile(r'<span itemprop="author" data-type="works">([\s\S]*?)</span>'),
-        compile(r'<a[^>]*?>(.*?)</a>')
+        pattern_html_tag_a,
     ]
     # 登場人物
     pattern_html_album_actors = [
         compile(r'<span itemprop="author" data-type="actor">([\s\S]*?)</span>'),
-        compile(r'<a[^>]*?>(.*?)</a>')
+        pattern_html_tag_a,
     ]
     # 标签
     pattern_html_album_tags = [
         compile(r'<span itemprop="genre" data-type="tags">([\s\S]*?)</span>'),
-        compile(r'<a[^>]*?>(.*?)</a>')
+        pattern_html_tag_a,
     ]
     # 作者
     pattern_html_album_authors = [
-        compile(r'作者： *<span itemprop="author" data-type="author">([\s\S]*?)</span>'),
-        compile(r"<a[^>]*?>(.*?)</a>"),
+        compile(r'<span itemprop="author" data-type="author">([\s\S]*?)</span>'),
+        pattern_html_tag_a,
     ]
     # 點擊喜歡
     pattern_html_album_likes = compile(r'<span id="albim_likes_\d+">(.*?)</span>')
     # 觀看
-    pattern_html_album_views = compile(r'<span>(.*?)</span>\n *<span>(次觀看|观看次数)</span>')
+    pattern_html_album_views = compile(r'<span>(.*?)</span>\n *<span>(次觀看|观看次数|次观看次数)</span>')
     # 評論(div)
     pattern_html_album_comment_count = compile(r'<div class="badge"[^>]*?id="total_video_comments">(\d+)</div>'), 0
 
@@ -108,6 +109,15 @@ class JmcomicText:
         ))
 
     @classmethod
+    def parse_jm_base64_html(cls, resp_text: str) -> str:
+        from base64 import b64decode
+        html_b64 = PatternTool.match_or_default(resp_text, cls.pattern_html_b64_decode_content, None)
+        if html_b64 is None:
+            return resp_text
+        html = b64decode(html_b64).decode()
+        return html
+
+    @classmethod
     def analyse_jm_photo_html(cls, html: str) -> JmPhotoDetail:
         return cls.reflect_new_instance(
             html,
@@ -118,7 +128,7 @@ class JmcomicText:
     @classmethod
     def analyse_jm_album_html(cls, html: str) -> JmAlbumDetail:
         return cls.reflect_new_instance(
-            html,
+            cls.parse_jm_base64_html(html),
             "pattern_html_album_",
             JmModuleConfig.album_class()
         )
@@ -299,7 +309,11 @@ class JmcomicText:
                 add()
                 # 定位右括号
                 j = find_right_pair(c, i)
-                ExceptionTool.require_true(j != -1, f'未闭合的 {c}{bracket_map[c]}: {title[i:]}')
+                if j == -1:
+                    # 括号未闭合
+                    char_list.append(c)
+                    i += 1
+                    continue
                 # 整个括号的单词结束
                 add(title[i:j])
                 # 移动指针
@@ -314,7 +328,7 @@ class JmcomicText:
     @classmethod
     def to_zh_cn(cls, s):
         import zhconv
-        return zhconv.convert(s, 'zh_cn')
+        return zhconv.convert(s, 'zh-cn')
 
     @classmethod
     def try_mkdir(cls, save_dir: str):
@@ -326,7 +340,8 @@ class JmcomicText:
                 limit = JmModuleConfig.VAR_FILE_NAME_LENGTH_LIMIT
                 jm_log('error', f'目录名过长，无法创建目录，强制缩短到{limit}个字符并重试')
                 save_dir = save_dir[0:limit]
-                mkdir_if_not_exists(save_dir)
+                return cls.try_mkdir(save_dir)
+            raise e
         return save_dir
 
 
@@ -394,7 +409,7 @@ class JmPageTool:
     # 收藏页面的本子结果
     pattern_html_favorite_content = compile(
         r'<div id="favorites_album_[^>]*?>[\s\S]*?'
-        r'<a href="/album/(\d+)/">[\s\S]*?'
+        r'<a href="/album/(\d+)/[^"]*">[\s\S]*?'
         r'<div class="video-title title-truncate">([^<]*?)'
         r'</div>'
     )
@@ -637,6 +652,7 @@ class JmApiAdaptTool:
             'actors',
             'related_list',
             'name',
+            'description',
             ('id', 'album_id'),
             ('author', 'authors'),
             ('total_views', 'views'),
@@ -689,7 +705,7 @@ class JmApiAdaptTool:
             chapter = AdvancedDict(chapter)
             # photo_id, photo_index, photo_title, photo_pub_date
             episode_list.append(
-                (chapter.id, chapter.sort, chapter.name, None)
+                (chapter.id, chapter.sort, chapter.name)
             )
         fields['episode_list'] = episode_list
         for it in 'scramble_id', 'page_count', 'pub_date', 'update_date':
